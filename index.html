@@ -1,5 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
+ <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#17324d">
@@ -40,6 +42,13 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 @media print{
  @page{size:A4;margin:14mm 13mm}
  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js');
+  });
+}
+</script>
  body{background:#fff!important;color:#17232d;font-size:11pt;line-height:1.4}
  header{display:block!important;background:#17324d!important;color:#fff!important;padding:15px 18px!important;margin:0 0 13px;border-radius:0}
  header h1{font-size:21pt;letter-spacing:.2px;margin:0 0 3px}
@@ -115,8 +124,12 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 <button id="save">Salvar orçamento no celular</button>
 <button id="print" class="secondary">Imprimir / salvar PDF</button>
 <button id="new" class="secondary">Novo orçamento</button>
+<button id="backup" class="secondary">Fazer backup</button>
+<button id="restore" class="secondary">Restaurar backup</button>
+<input id="backupFile" type="file" accept=".json,application/json" class="hidden" aria-label="Selecionar arquivo de backup">
 </div><p id="notice"></p>
-<p class="small">O botão “Imprimir / salvar PDF” gera o arquivo e abre o compartilhamento do Android. Selecione Adobe Acrobat para abrir o PDF, quando disponível.</p>
+<p class="small">O backup inclui todos os orçamentos salvos, com dados, valores e fotos anexadas. Guarde o arquivo JSON fora do celular, por exemplo no Google Drive ou computador. Para recuperar, use “Restaurar backup”. A restauração acrescenta os registros ao histórico e atualiza os que tiverem o mesmo identificador, sem apagar os demais.</p>
+<p class="small">O botão “Imprimir / salvar PDF” abre a impressão do Android. Escolha “Salvar como PDF” para gerar o arquivo e depois compartilhar pelo WhatsApp.</p>
 </section>
 <section class="card no-print" id="savedCard">
 <h2>7. Pesquisar orçamento pela placa</h2>
@@ -128,7 +141,6 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 </section>
 <div class="print-only small">Documento gerado pelo aplicativo Orçamento Oficina.</div>
 </main>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 let photos=[], currentId=null, records=[];
@@ -164,52 +176,101 @@ function renderRecords(){
 $('searchPlate').addEventListener('input',renderRecords);
 async function loadRecords(){try{const db=await openDB();records=await new Promise((res,rej)=>{const q=db.transaction('orcamentos').objectStore('orcamentos').getAll();q.onsuccess=()=>res(q.result.sort((a,b)=>b.id.localeCompare(a.id)));q.onerror=()=>rej(q.error)});renderRecords()}catch(e){$('savedList').textContent='Não foi possível acessar o armazenamento deste navegador.'}}
 $('save').onclick=()=>saveRecord().catch(e=>$('notice').textContent='Erro ao salvar: '+e.message);
-async function generateAndSharePDF(){
- calc();
- const button=$('print');
- const oldText=button.textContent;
- button.disabled=true;
- button.textContent='Gerando PDF...';
- $('notice').textContent='Preparando o PDF do orçamento...';
- try{
-  if(typeof html2pdf==='undefined') throw new Error('Não foi possível carregar o gerador de PDF. Verifique a conexão com a internet e tente novamente.');
-  const wrapper=document.createElement('div');
-  wrapper.style.background='#fff';
-  const header=document.querySelector('header').cloneNode(true);
-  const sourceMain=document.querySelector('main');
-  const content=sourceMain.cloneNode(true);
-  const sourceControls=sourceMain.querySelectorAll('input,textarea,select');
-  const clonedControls=content.querySelectorAll('input,textarea,select');
-  sourceControls.forEach((source,i)=>{if(clonedControls[i])clonedControls[i].value=source.value});
-  content.querySelectorAll('.no-print,#savedCard').forEach(el=>el.remove());
-  content.querySelectorAll('input,textarea,select').forEach(el=>{
-   const replacement=document.createElement('div');
-   replacement.textContent=el.value||'';
-   replacement.style.cssText='white-space:pre-wrap;min-height:20px;padding:3px 0 5px;border-bottom:1px solid #d3dce2;color:#17232d;font:10pt system-ui,sans-serif';
-   el.replaceWith(replacement);
-  });
-  wrapper.append(header,content);
-  const filename='Orcamento-G3-'+(normalizePlate($('placa').value)||'cliente')+'.pdf';
-  const options={margin:[10,10,10,10],filename,image:{type:'jpeg',quality:0.95},html2canvas:{scale:1.6,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
-  const pdf=await html2pdf().set(options).from(wrapper).toPdf().get('pdf');
-  const blob=pdf.output('blob');
-  const file=new File([blob],filename,{type:'application/pdf'});
-  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-   $('notice').textContent='PDF pronto. Escolha Adobe Acrobat na lista de aplicativos para abrir o documento.';
-   await navigator.share({files:[file],title:'Orçamento Mecânica G3',text:'Orçamento em PDF'});
-   $('notice').textContent='Compartilhamento do PDF concluído.';
-  }else{
-   const url=URL.createObjectURL(blob);
-   const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(url),60000);
-   $('notice').textContent='PDF baixado. Abra o arquivo e selecione Adobe Acrobat para visualizar.';
+async function backupRecords() {
+  try {
+    const db = await openDB();
+
+    const all = await new Promise((resolve, reject) => {
+      const request = db.transaction('orcamentos')
+        .objectStore('orcamentos').getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    db.close();
+
+    const payload = {
+      app: 'Mecanica G3 - Orcamentos',
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      records: all
+    };
+
+    const filename = 'backup_mecanica_g3_' +
+      new Date().toISOString().slice(0, 10) + '.json';
+
+    const blob = new Blob(
+      [JSON.stringify(payload)],
+      { type: 'application/json' }
+    );
+
+    const file = new File([blob], filename, {
+      type: 'application/json'
+    });
+
+    if (navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({ files: [file] })) {
+
+      await navigator.share({
+        files: [file],
+        title: 'Backup Mecânica G3'
+      });
+
+    } else {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+
+    $('notice').textContent =
+      `Backup gerado: ${all.length} orçamento(s), incluindo fotos anexadas.`;
+
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      $('notice').textContent =
+        'Erro ao gerar backup: ' + error.message;
+    }
   }
- }catch(e){
-  if(e.name==='AbortError') $('notice').textContent='Compartilhamento cancelado.';
-  else $('notice').textContent='Não foi possível gerar/compartilhar o PDF: '+e.message;
- }finally{button.disabled=false;button.textContent=oldText}
+});
+ db.close();
+ const payload={app:'Mecanica G3 - Orcamentos',formatVersion:1,exportedAt:new Date().toISOString(),records:all};
+ const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');
+ a.href=url;a.download='backup_mecanica_g3_'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+ $('notice').textContent=`Backup gerado: ${all.length} orçamento(s), incluindo fotos anexadas.`;
 }
-$('print').onclick=generateAndSharePDF;
+async function restoreRecords(file){
+ const raw=await file.text();const data=JSON.parse(raw);
+ if(data.app!=='Mecanica G3 - Orcamentos'||data.formatVersion!==1||!Array.isArray(data.records))throw new Error('Este arquivo não é um backup válido da Mecânica G3.');
+ if(data.records.some(r=>!r||!r.id||typeof r.fields!=='object'))throw new Error('O backup contém um orçamento inválido.');
+ if(!confirm(`Foram encontrados ${data.records.length} orçamento(s). A restauração vai mesclar esses registros com o histórico atual, sem apagar os outros. Continuar?`))return;
+ const db=await openDB();
+ await new Promise((res,rej)=>{const tx=db.transaction('orcamentos','readwrite');const store=tx.objectStore('orcamentos');for(const r of data.records)store.put(r);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||new Error('Restauração cancelada.'))});
+ db.close();await loadRecords();$('notice').textContent=`Restauração concluída: ${data.records.length} orçamento(s) importado(s).`;
+}
+$('backup').onclick=()=>backupRecords().catch(e=>$('notice').textContent='Erro ao fazer backup: '+e.message);
+$('restore').onclick=()=>$('backupFile').click();
+$('backupFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{await restoreRecords(file)}catch(err){$('notice').textContent='Erro ao restaurar: '+err.message}finally{e.target.value=''}};
+$('print').onclick = async () => {
+  calc();
+
+  try {
+    window.print();
+  } catch (error) {
+    $('notice').textContent =
+      'Não foi possível abrir a impressão: ' + error.message;
+  }
+};
 $('new').onclick=()=>{if(!confirm('Começar um orçamento novo? Salve antes se precisar manter o atual.'))return;fields.forEach(f=>$(f).value=f==='desconto'?'0':f==='status'?'Pendente':'');$('items').innerHTML='';photos=[];renderPhotos();currentId=null;addItem();$('notice').textContent='Novo orçamento.'};
 addItem('Diagnóstico automotivo','0');loadRecords();
 </script></body></html>
