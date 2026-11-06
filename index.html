@@ -1,43 +1,49 @@
-<script>
-const $=id=>document.getElementById(id);
-let photos=[], currentId=null, records=[];
-const money=n=>(Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-
-function addItem(desc='',val='0'){
- const row=document.createElement('div');row.className='item';
- row.innerHTML='<div><label>Descrição</label><input class="desc" placeholder="Peça, serviço ou mão de obra"></div><div><label>Valor (R$)</label><input class="value" type="number" min="0" step=".01"></div><button type="button" class="danger no-print" aria-label="Remover">×</button>';
- row.querySelector('.desc').value=desc;row.querySelector('.value').value=val;
- row.querySelectorAll('input').forEach(i=>i.addEventListener('input',calc));
- row.querySelector('button').onclick=()=>{row.remove();calc()};
- $('items').appendChild(row);calc();
-}
-
-function calc(){let sum=[...document.querySelectorAll('.value')].reduce((a,e)=>a+(Number(e.value)||0),0);let total=Math.max(0,sum-(Number($('desconto').value)||0));$('total').textContent=money(total);return total}
-$('addItem').onclick=()=>addItem();
-$('desconto').oninput=calc;
-
-$('fotos').onchange=async e=>{for(const file of e.target.files){if(!file.type.startsWith('image/'))continue;const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});photos.push({name:file.name,caption:file.name,data});}renderPhotos();e.target.value=''};
-
-function renderPhotos(){const g=$('photoGrid');g.innerHTML='';photos.forEach((ph,i)=>{const d=document.createElement('div');d.className='photo';d.innerHTML=`<img src="${ph.data}" alt=""><label>Legenda</label><input value="${escapeHtml(ph.caption)}" data-i="${i}"><button class="danger no-print" data-del="${i}" style="margin-top:5px">Remover</button>`;g.appendChild(d)});g.querySelectorAll('input').forEach(e=>e.oninput=()=>photos[Number(e.dataset.i)].caption=e.value);g.querySelectorAll('button').forEach(e=>e.onclick=()=>{photos.splice(Number(e.dataset.del),1);renderPhotos()})}
-
-function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-
-const fields=['cliente','telefone','veiculo','ano','placa','km','relato','diagnostico','recomendacao','desconto','validade','status','garantia'];
-
-function collect(){return {id:currentId||String(Date.now()),date:new Date().toLocaleString('pt-BR'),fields:Object.fromEntries(fields.map(f=>[f,$(f).value])),items:[...document.querySelectorAll('.item')].map(r=>({desc:r.querySelector('.desc').value,value:r.querySelector('.value').value})),photos,total:calc()}}
-
-function apply(r){currentId=r.id;fields.forEach(f=>$(f).value=r.fields[f]||'');$('items').innerHTML='';(r.items||[]).forEach(i=>addItem(i.desc,i.value));photos=r.photos||[];renderPhotos();calc();$('notice').textContent='Orçamento carregado.'}
-
-function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open('OrcamentoOficinaDB',1);req.onupgradeneeded=()=>req.result.createObjectStore('orcamentos',{keyPath:'id'});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
-
-async function saveRecord(){const r=collect();const db=await openDB();await new Promise((res,rej)=>{const tx=db.transaction('orcamentos','readwrite');tx.objectStore('orcamentos').put(r);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});currentId=r.id;$('notice').textContent='Orçamento salvo neste aparelho.';await loadRecords()}
-
-function normalizePlate(value){return String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
-
-function renderRecords(){
- const list=$('savedList');list.innerHTML='';
- const query=normalizePlate($('searchPlate').value);
- const matches=records.filter(r=>!query||normalizePlate(r.fields?.placa).includes(query));
- $('searchCount').textContent=query?`${matches.length} orçamento(s) encontrado(s) para a pesquisa.`:`${records.length} orçamento(s) salvo(s). Digite a placa para filtrar.`;
- if(!matches.length){list.textContent=query?'Nenhum orçamento encontrado para essa placa.':'Nenhum orçamento salvo ainda.';return}
- matches.forEach(r=>{c
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#17324d">
+<title>Orçamento Oficina</title>
+<style>
+:root{--navy:#17324d;--blue:#176b87;--bg:#f3f6f8;--line:#d7e0e6;--muted:#617381}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#17232d}
+header{max-width:850px;margin:14px auto 0;background:var(--navy);color:white;padding:12px 18px;border-radius:12px}
+.header-layout{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px}
+.header-info{min-width:0}
+header h1{margin:0;font-size:21px}
+header p{margin:3px 0 0;color:#d6e3eb;font-size:12px}
+.pix-header{display:flex;align-items:center;gap:10px;margin:0;color:#fff;font-size:11px;line-height:1.3;max-width:330px}
+.pix-header img{width:94px;height:94px;flex:0 0 94px;background:#fff;padding:5px;border-radius:6px;object-fit:contain}
+.pix-header strong{font-size:13px}
+@media(max-width:560px){header{margin:8px 8px 0;padding:12px}.header-layout{grid-template-columns:1fr;gap:10px}.pix-header{max-width:none;justify-content:flex-start}.pix-header img{width:82px;height:82px;flex-basis:82px}}
+@media print{header{max-width:none;margin:0 0 10px;border-radius:0;padding:10px 13px}.header-layout{grid-template-columns:minmax(0,1fr) auto;gap:12px}.pix-header{max-width:290px;font-size:8pt}.pix-header img{width:76px;height:76px;flex-basis:76px}.pix-header span{font-size:8pt}header p{font-size:8pt;margin:2px 0 0}}
+main{max-width:850px;margin:auto;padding:16px;display:grid;gap:14px}
+.card{background:white;border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 2px 8px #17324d0b}
+h2{font-size:17px;margin:0 0 12px;color:var(--navy)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px}
+input,textarea,select{width:100%;border:1px solid #cbd6dd;border-radius:9px;padding:11px;font:inherit;background:white;color:#17232d}
+textarea{min-height:85px;resize:vertical}.full{grid-column:1/-1}
+button{border:0;border-radius:9px;padding:11px 14px;font-weight:650;background:var(--navy);color:white;font-size:14px;cursor:pointer}
+button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#fff0ef;color:#a52c25}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.item{display:grid;grid-template-columns:1fr 110px 42px;gap:8px;align-items:end;margin:8px 0}
+.total{font-size:25px;font-weight:800;color:#13734e}
+.small{font-size:12px;color:var(--muted);line-height:1.45}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:9px;margin-top:10px}
+.photo{border:1px solid var(--line);border-radius:9px;padding:6px;font-size:11px;overflow:hidden}
+.photo img{width:100%;height:95px;object-fit:cover;border-radius:6px}
+.saved{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
+.saved strong{display:block}.hidden{display:none}
+#notice{font-size:12px;color:#13734e;min-height:18px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.item{grid-template-columns:1fr 95px 38px}}
+@media print{
+ @page{size:A4;margin:14mm 13mm}
+ *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ body{background:#fff!important;color:#17232d;font-size:11pt;line-height:1.4}
+ header{display:block!important;background:#17324d!important;color:#fff!important;padding:15px 18px!important;margin:0 0 13px;border-radius:0}
+ header h1{font-size:21pt;letter-spacing:.2px;margin:0 0 3px}
+ header p{color:#e2edf3!important;margin:2px 0;font-size:9pt}
+ .no-print,#savedCard{display:none!important}
+ main{max-width:none;padding:0;margin:0;display:block}
+ .card{background:#fff!important;border:0;border-bottom:1.5px solid #9aaab5!important;border-radius:0!important;box-shadow:none!important;padding:12px 2px 14px!important;margin:0 0 8px!important;break-inside:auto;page-break-ins
