@@ -113,14 +113,14 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 <h2>6. Salvar e gerar documento</h2>
 <div class="actions">
 <button id="save">Salvar orçamento no celular</button>
-<button id="print" class="secondary">Compartilhar PDF</button>
+<button id="print" class="secondary">Salvar PDF</button><button id="sharePdf" class="secondary">Enviar PDF pelo WhatsApp</button>
 <button id="new" class="secondary">Novo orçamento</button>
 <button id="backup" class="secondary">Fazer backup</button>
 <button id="restore" class="secondary">Restaurar backup</button>
 <input id="backupFile" type="file" accept=".json,application/json" class="hidden" aria-label="Selecionar arquivo de backup">
 </div><p id="notice"></p>
 <p class="small">O backup inclui todos os orçamentos salvos, com dados, valores e fotos anexadas. Guarde o arquivo JSON fora do celular, por exemplo no Google Drive ou computador. Para recuperar, use “Restaurar backup”. A restauração acrescenta os registros ao histórico e atualiza os que tiverem o mesmo identificador, sem apagar os demais.</p>
-<p class="small">O botão “Gerar PDF” cria um arquivo PDF para baixar. Se o aplicativo Android bloquear o download, abra a versão web no Chrome.</p>
+<p class="small">O botão Enviar PDF tenta abrir o compartilhamento com o arquivo anexado. Se o APK bloquear, salve o PDF e compartilhe pela pasta Downloads. O WhatsApp exige escolher o destinatário e confirmar o envio.</p>
 </section>
 <section class="card no-print" id="savedCard">
 <h2>7. Pesquisar orçamento pela placa</h2>
@@ -190,7 +190,7 @@ async function restoreRecords(file){
 $('backup').onclick=()=>backupRecords().catch(e=>$('notice').textContent='Erro ao fazer backup: '+e.message);
 $('restore').onclick=()=>$('backupFile').click();
 $('backupFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{await restoreRecords(file)}catch(err){$('notice').textContent='Erro ao restaurar: '+err.message}finally{e.target.value=''}};
-async function gerarPDF(){
+async function gerarPDF(modo="salvar"){
  const notice=$('notice');
  if(!window.jspdf || !window.jspdf.jsPDF){notice.textContent='Biblioteca PDF indisponível. Conecte à internet e tente novamente.';return}
  try{
@@ -209,17 +209,20 @@ async function gerarPDF(){
   if(r.photos.length){section('Fotos anexadas');for(const ph of r.photos){try{const typ=ph.data.startsWith('data:image/png')?'PNG':'JPEG';const props=doc.getImageProperties(ph.data);const w=Math.min(maxW,125),h=Math.min(100,w*props.height/props.width);next(h+14);doc.addImage(ph.data,typ,M,y,w,h);y+=h+5;line('Legenda',ph.caption)}catch(e){line('Imagem nao incorporada',ph.caption||ph.name)}}}
   const filename='orcamento_g3_'+(f.placa||'sem_placa').replace(/[^a-z0-9]/gi,'_')+'.pdf';
   const blob=doc.output('blob');
-   const arquivo=new File([blob],filename,{type:'application/pdf'});
-   if(navigator.share && navigator.canShare && navigator.canShare({files:[arquivo]})){
-     try {await navigator.share({files:[arquivo],title:'Orçamento Mecânica G3'});notice.textContent='Compartilhamento solicitado.';return;}
-     catch(err){if(err.name==='AbortError'){notice.textContent='Compartilhamento cancelado.';return;}}
-   }
-   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-   notice.textContent='Compartilhamento indisponível neste WebView. Tentativa de download realizada; teste no Chrome se necessário.';
-  
+  if(modo==='compartilhar'){
+    const file=new File([blob],filename,{type:'application/pdf'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      try{await navigator.share({files:[file],title:'Orçamento Mecânica G3'});notice.textContent='Compartilhamento enviado ao aplicativo escolhido.'}
+      catch(err){notice.textContent=err.name==='AbortError'?'Compartilhamento cancelado.':'Erro ao compartilhar: '+err.message}
+    }else{notice.textContent='Este APK não permite compartilhar PDF diretamente. Toque em Salvar PDF e compartilhe o arquivo pela pasta Downloads.'}
+    return;
+  }
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  notice.textContent='PDF gerado. Verifique a pasta Downloads do celular.';
  }catch(e){notice.textContent='Erro ao gerar PDF: '+e.message}
 }
-$('print').onclick=gerarPDF;
+$('print').onclick=()=>gerarPDF('salvar');
+$('sharePdf').onclick=()=>gerarPDF('compartilhar');
 $('new').onclick=()=>{if(!confirm('Começar um orçamento novo? Salve antes se precisar manter o atual.'))return;fields.forEach(f=>$(f).value=f==='desconto'?'0':f==='status'?'Pendente':'');$('items').innerHTML='';photos=[];renderPhotos();currentId=null;addItem();$('notice').textContent='Novo orçamento.'};
 addItem('Diagnóstico automotivo','0');loadRecords();
 </script></body></html>
