@@ -215,13 +215,32 @@ function printPayloadFromChrome(){
  }catch(e){$('notice').textContent='Não foi possível preparar o PDF no Chrome: '+e.message;}
 }
 $('print').onclick=openPrintInChrome;
-// Alternativa independente: abre a mesma página publicada por um link HTTPS comum.
-// O navegador externo recebe os dados pelo fragmento e prepara a impressão.
-function openPrintInBrowser(){
+// Alternativa independente: reduz cópias das fotos apenas para a transferência ao Chrome.
+// As fotos originais continuam intactas no orçamento e no backup do aplicativo.
+function compressPhotoForBrowser(photo){
+ return new Promise(resolve=>{
+  const img=new Image();
+  img.onload=()=>{
+   try{
+    const maxSide=1100, scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+    canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    resolve({...photo,data:canvas.toDataURL('image/jpeg',0.58)});
+   }catch(e){resolve(photo)}
+  };
+  img.onerror=()=>resolve(photo);
+  img.src=photo.data;
+ });
+}
+async function openPrintInBrowser(){
  const record=collect();
+ $('notice').textContent='Preparando as fotos para abrir o orçamento no navegador...';
+ record.photos=await Promise.all((record.photos||[]).map(compressPhotoForBrowser));
  const payload=encodeURIComponent(JSON.stringify(record));
  if(payload.length>1200000){
-  $('notice').textContent='Este orçamento está muito grande para abrir no navegador automaticamente. Reduza ou remova algumas fotos e tente novamente.';
+  $('notice').textContent='Mesmo após reduzir as fotos, o orçamento ainda ficou grande demais para enviar pelo link. Diminua a quantidade de fotos e tente novamente.';
   return;
  }
  const pageUrl='https://silvamichel2007-sketch.github.io/apk-g3/#g3print='+payload;
@@ -231,7 +250,7 @@ function openPrintInBrowser(){
  link.rel='noopener';
  link.style.display='none';
  document.body.appendChild(link);
- $('notice').textContent='Solicitando abertura no navegador externo...';
+ $('notice').textContent='Abrindo o orçamento no navegador...';
  link.click();
  link.remove();
 }
