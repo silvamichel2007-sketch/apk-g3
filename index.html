@@ -1,5 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
+ <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#17324d">
@@ -40,6 +42,13 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 @media print{
  @page{size:A4;margin:14mm 13mm}
  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js');
+  });
+}
+</script>
  body{background:#fff!important;color:#17232d;font-size:11pt;line-height:1.4}
  header{display:block!important;background:#17324d!important;color:#fff!important;padding:15px 18px!important;margin:0 0 13px;border-radius:0}
  header h1{font-size:21pt;letter-spacing:.2px;margin:0 0 3px}
