@@ -190,7 +190,30 @@ async function restoreRecords(file){
 $('backup').onclick=()=>backupRecords().catch(e=>$('notice').textContent='Erro ao fazer backup: '+e.message);
 $('restore').onclick=()=>$('backupFile').click();
 $('backupFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{await restoreRecords(file)}catch(err){$('notice').textContent='Erro ao restaurar: '+err.message}finally{e.target.value=''}};
-$('print').onclick=()=>{calc();window.print()};
+function openPrintInChrome(){
+ const record=collect();
+ const payload=encodeURIComponent(JSON.stringify(record));
+ if(payload.length>1200000){
+  $('notice').textContent='Este orçamento está muito grande para abrir no Chrome automaticamente. Reduza ou remova algumas fotos e tente novamente.';
+  return;
+ }
+ const pageUrl='https://silvamichel2007-sketch.github.io/apk-g3/';
+ const intentUrl='intent://silvamichel2007-sketch.github.io/apk-g3/#g3print='+payload+';scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(pageUrl)+';end';
+ $('notice').textContent='Abrindo o orçamento no Chrome para gerar o PDF...';
+ window.location.href=intentUrl;
+}
+function printPayloadFromChrome(){
+ const prefix='#g3print=';
+ if(!location.hash.startsWith(prefix))return;
+ try{
+  const record=JSON.parse(decodeURIComponent(location.hash.slice(prefix.length)));
+  if(!record||!record.fields||!Array.isArray(record.items))throw new Error('Dados do orçamento inválidos.');
+  apply(record);
+  history.replaceState(null,'',location.pathname+location.search);
+  setTimeout(()=>window.print(),1000);
+ }catch(e){$('notice').textContent='Não foi possível preparar o PDF no Chrome: '+e.message;}
+}
+$('print').onclick=openPrintInChrome;
 $('new').onclick=()=>{if(!confirm('Começar um orçamento novo? Salve antes se precisar manter o atual.'))return;fields.forEach(f=>$(f).value=f==='desconto'?'0':f==='status'?'Pendente':'');$('items').innerHTML='';photos=[];renderPhotos();currentId=null;addItem();$('notice').textContent='Novo orçamento.'};
-addItem('Diagnóstico automotivo','0');loadRecords();
+addItem('Diagnóstico automotivo','0');loadRecords();printPayloadFromChrome();
 </script></body></html>
