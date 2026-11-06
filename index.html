@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#17324d">
 <title>Orçamento Oficina</title>
 <style>
@@ -168,58 +167,16 @@ function renderRecords(){
 $('searchPlate').addEventListener('input',renderRecords);
 async function loadRecords(){try{const db=await openDB();records=await new Promise((res,rej)=>{const q=db.transaction('orcamentos').objectStore('orcamentos').getAll();q.onsuccess=()=>res(q.result.sort((a,b)=>b.id.localeCompare(a.id)));q.onerror=()=>rej(q.error)});renderRecords()}catch(e){$('savedList').textContent='Não foi possível acessar o armazenamento deste navegador.'}}
 $('save').onclick=()=>saveRecord().catch(e=>$('notice').textContent='Erro ao salvar: '+e.message);
-async function backupRecords() {
-  const db = await openDB();
-  try {
-    const all = await new Promise((resolve, reject) => {
-      const request = db.transaction('orcamentos')
-        .objectStore('orcamentos').getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    const payload = {
-      app: 'Mecanica G3 - Orcamentos',
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
-      records: all
-    };
-    const filename = 'backup_mecanica_g3_' +
-      new Date().toISOString().slice(0, 10) + '.json';
-    const blob = new Blob([JSON.stringify(payload)], {
-      type: 'application/json'
-    });
-    const file = new File([blob], filename, {
-      type: 'application/json'
-    });
-
-    if (navigator.share && navigator.canShare &&
-        navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: 'Backup Mecânica G3'
-      });
-    } else {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    }
-
-    $('notice').textContent =
-      `Backup gerado: ${all.length} orçamento(s), incluindo fotos anexadas.`;
-  } catch (error) {
-    if (error.name !== 'AbortError') {
-      $('notice').textContent =
-        'Erro ao gerar backup: ' + error.message;
-    }
-  } finally {
-    db.close();
-  }
+async function backupRecords(){
+ const db=await openDB();
+ const all=await new Promise((res,rej)=>{const q=db.transaction('orcamentos').objectStore('orcamentos').getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
+ db.close();
+ const payload={app:'Mecanica G3 - Orcamentos',formatVersion:1,exportedAt:new Date().toISOString(),records:all};
+ const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');
+ a.href=url;a.download='backup_mecanica_g3_'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+ $('notice').textContent=`Backup gerado: ${all.length} orçamento(s), incluindo fotos anexadas.`;
 }
 async function restoreRecords(file){
  const raw=await file.text();const data=JSON.parse(raw);
@@ -236,12 +193,4 @@ $('backupFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;
 $('print').onclick=()=>{calc();window.print()};
 $('new').onclick=()=>{if(!confirm('Começar um orçamento novo? Salve antes se precisar manter o atual.'))return;fields.forEach(f=>$(f).value=f==='desconto'?'0':f==='status'?'Pendente':'');$('items').innerHTML='';photos=[];renderPhotos();currentId=null;addItem();$('notice').textContent='Novo orçamento.'};
 addItem('Diagnóstico automotivo','0');loadRecords();
-</script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js');
-  });
-}
-</script>
-</body></html>
+</script></body></html>
