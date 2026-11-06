@@ -285,18 +285,18 @@ async function generateAndSharePdf(){
    pagebreak:{mode:['css','legacy']}
   }).from(document.querySelector('body > main')).outputPdf('blob');
   const file=new File([blob],filename,{type:'application/pdf'});
-  if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
-   $('notice').textContent='PDF pronto. Escolha o aplicativo para compartilhar.';
+  if(navigator.share){
+   $('notice').textContent='PDF pronto. Abrindo o menu de compartilhamento do Android...';
+   // Tenta chamar o compartilhamento de arquivo diretamente. Alguns WebViews
+   // retornam canShare=false mesmo aceitando share(), por isso não bloqueamos a tentativa.
    await navigator.share({files:[file],title:'Orçamento Mecânica G3',text:'Orçamento em PDF'});
-   $('notice').textContent='Compartilhamento concluído.';
+   $('notice').textContent='Menu de compartilhamento aberto.';
   }else{
-   const url=URL.createObjectURL(blob);
-   const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(url),60000);
-   $('notice').textContent='PDF gerado e baixado. Abra o arquivo e use Compartilhar para escolher Adobe, WhatsApp ou outro aplicativo.';
+   $('notice').textContent='Este APK não disponibiliza o compartilhamento nativo de arquivos. Para abrir o menu do Android será necessário suporte nativo no APK.';
   }
  }catch(e){
   if(e && e.name==='AbortError')$('notice').textContent='Compartilhamento cancelado.';
+  else if(e && (e.name==='NotAllowedError'||e.name==='TypeError'))$('notice').textContent='O Android/WebView não aceitou compartilhar este PDF diretamente. O APK precisa oferecer a ponte nativa de compartilhamento.';
   else $('notice').textContent='Não foi possível gerar ou compartilhar o PDF: '+(e.message||e);
  }finally{
   document.body.classList.remove('pdf-export');
