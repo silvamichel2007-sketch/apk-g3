@@ -1,0 +1,12 @@
+{
+  "name": "Mecânica G3 - Orçamentos",
+  "short_name": "Mecânica G3",
+  "description": "Aplicativo de orçamentos da Mecânica G3",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#202020",
+  "lang": "pt-BR"
+}
