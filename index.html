@@ -113,14 +113,20 @@ button.secondary{background:#e8eff3;color:var(--navy)}button.danger{background:#
 <h2>6. Salvar e gerar documento</h2>
 <div class="actions">
 <button id="save">Salvar orçamento no celular</button>
-<button id="print" class="secondary">Gerar PDF</button>
+<button id="print" class="secondary">Gerar / visualizar PDF</button>
 <button id="new" class="secondary">Novo orçamento</button>
 <button id="backup" class="secondary">Fazer backup</button>
 <button id="restore" class="secondary">Restaurar backup</button>
 <input id="backupFile" type="file" accept=".json,application/json" class="hidden" aria-label="Selecionar arquivo de backup">
 </div><p id="notice"></p>
 <p class="small">O backup inclui todos os orçamentos salvos, com dados, valores e fotos anexadas. Guarde o arquivo JSON fora do celular, por exemplo no Google Drive ou computador. Para recuperar, use “Restaurar backup”. A restauração acrescenta os registros ao histórico e atualiza os que tiverem o mesmo identificador, sem apagar os demais.</p>
-<p class="small">O botão “Gerar PDF” cria um arquivo PDF para baixar. Se o aplicativo Android bloquear o download, abra a versão web no Chrome.</p>
+<p class="small">O botão prepara uma prévia e oferece baixar ou imprimir. Alguns WebViews bloqueiam PDFs; nesse caso, use a versão web no Chrome.</p>
+</section>
+<section class="card no-print hidden" id="pdfPreviewCard">
+<h2>Pré-visualização do PDF</h2>
+<p class="small" id="pdfHint">Se a prévia ficar em branco, o aplicativo pode não oferecer leitor de PDF. Tente baixar ou usar o Chrome.</p>
+<div class="actions"><button type="button" id="downloadPdf">Baixar PDF</button><button type="button" class="secondary" id="printPdf">Imprimir PDF</button><button type="button" class="secondary" id="closePdf">Fechar prévia</button></div>
+<iframe id="pdfFrame" title="Prévia do orçamento em PDF" style="width:100%;height:65vh;border:1px solid #d7e0e6;border-radius:9px;margin-top:12px;background:white"></iframe>
 </section>
 <section class="card no-print" id="savedCard">
 <h2>7. Pesquisar orçamento pela placa</h2>
@@ -208,11 +214,20 @@ async function gerarPDF(){
   section('Condicoes');for(const [k,l] of [['validade','Validade'],['status','Situacao'],['garantia','Garantia']])line(l,f[k]);
   if(r.photos.length){section('Fotos anexadas');for(const ph of r.photos){try{const typ=ph.data.startsWith('data:image/png')?'PNG':'JPEG';const props=doc.getImageProperties(ph.data);const w=Math.min(maxW,125),h=Math.min(100,w*props.height/props.width);next(h+14);doc.addImage(ph.data,typ,M,y,w,h);y+=h+5;line('Legenda',ph.caption)}catch(e){line('Imagem nao incorporada',ph.caption||ph.name)}}}
   const filename='orcamento_g3_'+(f.placa||'sem_placa').replace(/[^a-z0-9]/gi,'_')+'.pdf';
-  const blob=doc.output('blob');const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-  notice.textContent='PDF gerado. Verifique a pasta Downloads do celular.';
+  const blob=doc.output('blob');
+  if(window.currentPdfUrl)URL.revokeObjectURL(window.currentPdfUrl);
+  window.currentPdfUrl=URL.createObjectURL(blob);
+  window.currentPdfName=filename;
+  $('pdfFrame').src=window.currentPdfUrl;
+  $('pdfPreviewCard').classList.remove('hidden');
+  $('pdfPreviewCard').scrollIntoView({behavior:'smooth',block:'start'});
+  notice.textContent='PDF preparado. Use as opções de visualizar, baixar ou imprimir.';
  }catch(e){notice.textContent='Erro ao gerar PDF: '+e.message}
 }
 $('print').onclick=gerarPDF;
+$('downloadPdf').onclick=()=>{if(!window.currentPdfUrl)return;const a=document.createElement('a');a.href=window.currentPdfUrl;a.download=window.currentPdfName||'orcamento_g3.pdf';document.body.appendChild(a);a.click();a.remove();$('pdfHint').textContent='Se o download não funcionar, tente abrir a versão web no Chrome.'};
+$('printPdf').onclick=()=>{try{const frame=$('pdfFrame');frame.contentWindow.focus();frame.contentWindow.print()}catch(e){$('pdfHint').textContent='Impressão bloqueada neste aplicativo. Tente o Chrome.'}};
+$('closePdf').onclick=()=>{$('pdfPreviewCard').classList.add('hidden')};
 $('new').onclick=()=>{if(!confirm('Começar um orçamento novo? Salve antes se precisar manter o atual.'))return;fields.forEach(f=>$(f).value=f==='desconto'?'0':f==='status'?'Pendente':'');$('items').innerHTML='';photos=[];renderPhotos();currentId=null;addItem();$('notice').textContent='Novo orçamento.'};
 addItem('Diagnóstico automotivo','0');loadRecords();
 </script></body></html>
